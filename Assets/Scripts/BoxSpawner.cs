@@ -5,7 +5,7 @@ public class BoxSpawner : MonoBehaviour
     public GameObject box; 
     public float minX = 0f;
     public float maxX = 27f;
-    public float minY = .7f; // Adjust as needed for height
+    public float minY = .7f; 
     public float maxY = 2f;
     public float minZ = 0f;
     public float maxZ = 42f;

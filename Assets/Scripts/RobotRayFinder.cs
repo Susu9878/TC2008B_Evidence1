@@ -5,8 +5,8 @@ public class RobotWanderRaycast : MonoBehaviour
 {
     [Header("Raycast Settings")]
     public float rayDistance = 5f;
-    public float rayRadius = 0.6f;         // perfect width for box-sized objects
-    public float rayHeight = 0.4f;         // perfect height
+    public float rayRadius = 0.6f;
+    public float rayHeight = 0.4f;
 
     [Header("Movement")]
     public float moveSpeed = 2f;
@@ -14,7 +14,7 @@ public class RobotWanderRaycast : MonoBehaviour
     public float wanderChangeInterval = 3f;
 
     [Header("Layer Masks")]
-    public LayerMask boxMask;              // ONLY PickupBox layer
+    public LayerMask boxMask;
     public LayerMask wallMask;
 
     [Header("Delivery")]
@@ -27,6 +27,8 @@ public class RobotWanderRaycast : MonoBehaviour
 
     private float wanderTimer = 0f;
     private Vector3 wanderDirection;
+
+    private bool isDone = false;   
 
 
     void Start()
@@ -47,11 +49,30 @@ public class RobotWanderRaycast : MonoBehaviour
 
     void Update()
     {
-        // ---------------------------------------------------------
-        // 1. DELIVERY MODE
-        // ---------------------------------------------------------
+     
+        // 0. STOP MODE 
+     
+        if (isDone)
+        {
+            agent.ResetPath();
+            return;
+        }
+
+
+
+        // 1. If the robot has boxes → try to deliver
+
         if (pickup.GetCarriedCount() >= 1)
         {
+          
+            if (!shelfController.HasSpace())
+            {
+                isDone = true;
+                agent.ResetPath();
+                return;
+            }
+
+     
             agent.SetDestination(shelf.position);
 
             if (Vector3.Distance(transform.position, shelf.position) < deliveryDistance)
@@ -62,13 +83,26 @@ public class RobotWanderRaycast : MonoBehaviour
 
 
 
-        // ---------------------------------------------------------
-        // 2. PERFECT SPHERECAST BOX DETECTION (Raycast Only)
-        // ---------------------------------------------------------
+        // 2. Robot has NO boxes → check if shelf is full
+
+        if (!shelfController.HasSpace())
+        {
+            isDone = true;
+            agent.ResetPath();
+            return;
+        }
+
+
+
+
+
+ 
+BoxDetection:
+
         Vector3 rayOrigin =
             transform.position
-            + (transform.up * rayHeight)
-            + (transform.forward * 0.2f);     // start slightly in front of robot
+            + transform.up * rayHeight
+            + transform.forward * 0.2f;
 
         RaycastHit hit;
 
@@ -82,26 +116,20 @@ public class RobotWanderRaycast : MonoBehaviour
             QueryTriggerInteraction.Ignore
         );
 
-        if (hitBox)
+        if (hitBox && hit.collider.CompareTag("box"))
         {
-            if (hit.collider.CompareTag("box"))
+            BoxController bc = hit.collider.GetComponent<BoxController>();
+            if (bc != null && !bc.isPickedUp)
             {
-                BoxController bc = hit.collider.GetComponent<BoxController>();
-
-                // Only chase free boxes (not stored / not carried)
-                if (bc != null && !bc.isPickedUp)
-                {
-                    agent.SetDestination(hit.collider.transform.position);
-                    return;  // IMPORTANT: stop wandering & wall avoiding
-                }
+                agent.SetDestination(hit.collider.transform.position);
+                return;
             }
         }
 
 
 
-        // ---------------------------------------------------------
-        // 3. WALL AVOIDANCE
-        // ---------------------------------------------------------
+        // 4. WALL AVOIDANCE
+
         if (Physics.Raycast(rayOrigin, transform.forward, out RaycastHit wallHit, 1f, wallMask))
         {
             Vector3 avoidDir = Vector3.Reflect(transform.forward, wallHit.normal);
@@ -116,9 +144,7 @@ public class RobotWanderRaycast : MonoBehaviour
 
 
 
-        // ---------------------------------------------------------
-        // 4. WANDER MODE
-        // ---------------------------------------------------------
+
         wanderTimer += Time.deltaTime;
         if (wanderTimer >= wanderChangeInterval)
             ChooseRandomWanderDirection();
@@ -131,10 +157,6 @@ public class RobotWanderRaycast : MonoBehaviour
 
 
 
-
-    // ------------------------------------------------------------
-    // RANDOM WANDER BEHAVIOR
-    // ------------------------------------------------------------
     void ChooseRandomWanderDirection()
     {
         wanderDirection = new Vector3(
@@ -148,25 +170,27 @@ public class RobotWanderRaycast : MonoBehaviour
 
 
 
-
-    // ------------------------------------------------------------
-    // DELIVERY → SLOT INSERT
-    // ------------------------------------------------------------
     void DeliverBox()
     {
         if (pickup.GetCarriedCount() == 0) return;
-        if (!shelfController.HasSpace()) return;
+
+        
+        if (!shelfController.HasSpace())
+        {
+            isDone = true;
+            agent.ResetPath();
+            return;
+        }
 
         Transform slot = shelfController.GetEmptySlot();
         GameObject box = pickup.GetLastCarriedBox();
 
-        // Snap box into slot with correct size & no scale inheritance
         box.transform.SetParent(slot, false);
         box.transform.localPosition = Vector3.zero;
         box.transform.localEulerAngles = Vector3.zero;
         box.transform.localScale = Vector3.one;
 
-        // Turn box into stored asset
+     
         box.tag = "stored";
         box.layer = LayerMask.NameToLayer("StoredBox");
         box.GetComponent<BoxController>().isPickedUp = true;
@@ -181,17 +205,15 @@ public class RobotWanderRaycast : MonoBehaviour
 
 
 
-    // ------------------------------------------------------------
-    // DEBUG VISUALIZER
-    // ------------------------------------------------------------
+
     void OnDrawGizmos()
     {
         if (!Application.isPlaying) return;
 
         Vector3 rayOrigin =
             transform.position
-            + (transform.up * rayHeight)
-            + (transform.forward * 0.2f);
+            + transform.up * rayHeight
+            + transform.forward * 0.2f;
 
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(rayOrigin, rayRadius);
