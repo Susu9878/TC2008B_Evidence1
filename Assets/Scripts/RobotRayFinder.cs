@@ -92,13 +92,6 @@ public class RobotWanderRaycast : MonoBehaviour
             return;
         }
 
-
-
-
-
- 
-BoxDetection:
-
         Vector3 rayOrigin =
             transform.position
             + transform.up * rayHeight
